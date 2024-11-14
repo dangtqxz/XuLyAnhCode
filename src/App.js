@@ -89,28 +89,28 @@ function App() {
       [0, 0, 0],
       [-1, -2, -1]
     ];
-
+  
     // Lặp qua từng pixel trong ảnh
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
-        let pixelX = 0;
-        let pixelY = 0;
-
+        let Gx = 0;
+        let Gy = 0;
+  
         // Tính toán gradient theo hướng X và Y
         for (let i = -1; i <= 1; i++) {
           for (let j = -1; j <= 1; j++) {
             const idx = ((y + i) * width + (x + j)) * 4;
             // Chuyển đổi pixel sang ảnh xám
             const gray = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
-            pixelX += gray * sobelX[i + 1][j + 1]; // Tính gradient theo X
-            pixelY += gray * sobelY[i + 1][j + 1]; // Tính gradient theo Y
+            Gx += gray * sobelX[i + 1][j + 1]; // Tính Gx
+            Gy += gray * sobelY[i + 1][j + 1]; // Tính Gy
           }
         }
-
+  
         // Tính độ lớn của gradient
-        const magnitude = Math.sqrt(pixelX * pixelX + pixelY * pixelY);
+        const magnitude = Math.sqrt(Gx * Gx + Gy * Gy);
         const value = magnitude > 255 ? 255 : magnitude < 0 ? 0 : magnitude;
-
+  
         const idx = (y * width + x) * 4;
         // Gán giá trị cho pixel trong ảnh đầu ra
         sobelData[idx] = value; // R
@@ -317,88 +317,56 @@ function App() {
 
   // Hàm áp dụng bộ lọc Canny
   const applyCanny = (data, width, height) => {
-    const cannyData = new Uint8ClampedArray(data.length);
-    const gradientX = new Float32Array(data.length / 4);
-    const gradientY = new Float32Array(data.length / 4);
-    const magnitude = new Float32Array(data.length / 4);
-    const direction = new Float32Array(data.length / 4);
-
-    // Tính toán gradient bằng Sobel
+    // Chuyển đổi hình ảnh sang grayscale
+    const grayData = new Uint8ClampedArray(width * height);
+    for (let i = 0; i < data.length; i += 4) {
+      grayData[i / 4] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    }
+  
+    // Áp dụng Sobel để tính Gradient
+    const gradientMagnitude = new Float32Array(width * height);
+  
     const sobelX = [
       [-1, 0, 1],
       [-2, 0, 2],
-      [-1, 0, 1]
+      [-1, 0, 1],
     ];
+  
     const sobelY = [
       [1, 2, 1],
       [0, 0, 0],
-      [-1, -2, -1]
+      [-1, -2, -1],
     ];
-
-    // Tính toán gradient cho từng pixel
+  
     for (let y = 1; y < height - 1; y++) {
       for (let x = 1; x < width - 1; x++) {
-        let pixelX = 0;
-        let pixelY = 0;
-
-        // Lặp qua ma trận Sobel để tính gradient
+        let gx = 0;
+        let gy = 0;
+  
         for (let i = -1; i <= 1; i++) {
           for (let j = -1; j <= 1; j++) {
-            const idx = ((y + i) * width + (x + j)) * 4;
-            const gray = (data[idx] + data[idx + 1] + data[idx + 2]) / 3; // Chuyển sang ảnh xám
-            pixelX += gray * sobelX[i + 1][j + 1]; // Tính gradient theo X
-            pixelY += gray * sobelY[i + 1][j + 1]; // Tính gradient theo Y
+            const pixel = grayData[(y + i) * width + (x + j)];
+            gx += pixel * sobelX[i + 1][j + 1];
+            gy += pixel * sobelY[i + 1][j + 1];
           }
         }
-
-        const idx = (y * width + x) * 4;
-        gradientX[y * width + x] = pixelX; // Lưu gradient theo X
-        gradientY[y * width + x] = pixelY; // Lưu gradient theo Y
-        magnitude[y * width + x] = Math.sqrt(pixelX * pixelX + pixelY * pixelY); // Tính độ lớn gradient
-        direction[y * width + x] = Math.atan2(gradientY[y * width + x], gradientX[y * width + x]); // Tính hướng gradient
+  
+        const magnitude = Math.sqrt(gx * gx + gy * gy);
+        gradientMagnitude[y * width + x] = magnitude;
       }
     }
-
-    // Non-maximum suppression
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        const idx = (y * width + x) * 4;
-        const mag = magnitude[y * width + x];
-        const dir = direction[y * width + x];
-
-        // Chuyển đổi hướng về 0, 45, 90, 135 độ
-        let q = 255;
-        let r = 255;
-
-        if ((dir >= -Math.PI / 8 && dir < Math.PI / 8) || (dir >= 7 * Math.PI / 8 || dir < -7 * Math.PI / 8)) {
-          q = magnitude[y * width + (x + 1)];
-          r = magnitude[y * width + (x - 1)];
-        } else if (dir >= Math.PI / 8 && dir < 3 * Math.PI / 8) {
-          q = magnitude[(y + 1) * width + (x + 1)];
-          r = magnitude[(y - 1) * width + (x - 1)];
-        } else if (dir >= 3 * Math.PI / 8 && dir < 5 * Math.PI / 8) {
-          q = magnitude[(y + 1) * width + x];
-          r = magnitude[(y - 1) * width + x];
-        } else if (dir >= 5 * Math.PI / 8 && dir < 7 * Math.PI / 8) {
-          q = magnitude[(y - 1) * width + (x + 1)];
-          r = magnitude[(y + 1) * width + (x - 1)];
-        }
-
-        // Giữ lại pixel nếu nó là cực đại
-        if (mag >= q && mag >= r) {
-          cannyData[idx] = mag; // R
-          cannyData[idx + 1] = mag; // G
-          cannyData[idx + 2] = mag; // B
-        } else {
-          cannyData[idx] = 0; // R
-          cannyData[idx + 1] = 0; // G
-          cannyData[idx + 2] = 0; // B
-        }
-        cannyData[idx + 3] = 255; // A
-      }
+  
+    // Chuyển đổi gradientMagnitude về dạng 0-255 và tạo dữ liệu pixel
+    const cannyData = new Uint8ClampedArray(width * height * 4);
+    for (let i = 0; i < gradientMagnitude.length; i++) {
+      const value = Math.min(255, gradientMagnitude[i]);
+      cannyData[i * 4] = value;        // R
+      cannyData[i * 4 + 1] = value;    // G
+      cannyData[i * 4 + 2] = value;    // B
+      cannyData[i * 4 + 3] = 255;       // A
     }
-
-    return cannyData; // Trả về dữ liệu ảnh đã xử lý
+  
+    return cannyData;
   };
 
   return (
